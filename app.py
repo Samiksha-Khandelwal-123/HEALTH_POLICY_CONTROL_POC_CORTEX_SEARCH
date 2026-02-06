@@ -2,6 +2,8 @@ import streamlit as st
 from snowflake.snowpark.context import get_active_session
 from datetime import datetime
 import json
+from snowflake.core import Root
+import pandas as pd
 
 # -------------------------------------------------
 # Page Configuration
@@ -60,7 +62,14 @@ if logout_btn:
 # Snowflake Session (Auto-auth in SiS)
 # -------------------------------------------------
 session = get_active_session()
+root = Root(session)
 
+search_service = (
+    root
+        .databases["AI_POC_DB"]
+        .schemas["HEALTH_POLICY_POC"]
+        .cortex_search_services["HEALTH_POLICY_POC_CORTEX_SEARCH_SERVICE"]
+)
 # -------------------------------------------------
 # Header
 # -------------------------------------------------
@@ -113,18 +122,45 @@ if search_btn:
     else:
         st.subheader("📌 Search Results")
 
-        search_sql = f"""
-            CALL AI_POC_DB.HEALTH_POLICY_POC.SEARCH_POLICY_CLAUSE(
-                '{search_text}',
-                '{state}',
-                '{lob}',
-                '{version}'
-            )
-        """
+        #search_sql = f"""
+        #    CALL AI_POC_DB.HEALTH_POLICY_POC.SEARCH_POLICY_CLAUSE(
+        #        '{search_text}',
+        #        '{state}',
+        #        '{lob}',
+        #        '{version}'
+        #    )
+        #"""
+  
 
         try:
-            results_df = session.sql(search_sql).to_pandas()
-
+            #results_df = session.sql(search_sql).to_pandas()
+   resp = search_service.search(
+    query=search_text,
+    columns=["CHUNK_TEXT", "FILE_NAME", "VERSION", "CHUNK_TYPE", "CHUNK_ORDER"],
+    filter={
+     "@and": [
+      {"@eq": {"LOB": lob}},
+      {"@eq": {"STATE": state}},
+      {"@eq": {"VERSION": version}}
+     ]
+    },
+    limit=top_k
+   )
+   results = resp.to_dict()["results"]   
+   results_df = pd.DataFrame(results)
+   
+   results_df["CITATION"] = (
+    results_df["FILE_NAME"]
+    + " | Version: " + results_df["VERSION"]
+    + " | Chunk: " + results_df["CHUNK_TYPE"].astype(str)
+    + " " + results_df["CHUNK_ORDER"].astype(str)
+   )
+   
+   results_df.rename(
+    columns={"CHUNK_TEXT": "EXCERPT"},
+    inplace=True
+   )
+    
             if results_df.empty:
                 st.warning("No matching clauses found.")
             else:
@@ -163,7 +199,7 @@ if search_btn:
                     lob,
                     state,
                     version,
-                    search_sql,
+                    "HEALTH_POLICY_POC_CORTEX_SEARCH_SERVICE",
                     json.loads(results_df.to_json(orient="records")),
                     len(results_df),
                     st.session_state.username,
