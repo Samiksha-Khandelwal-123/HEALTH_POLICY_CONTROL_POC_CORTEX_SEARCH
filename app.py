@@ -9,7 +9,7 @@ import pandas as pd
 # Page Configuration
 # -------------------------------------------------
 st.set_page_config(
-    page_title="Policy & Control Cortex Search",
+    page_title="Policy & Control Coretx Search",
     layout="wide"
 )
 
