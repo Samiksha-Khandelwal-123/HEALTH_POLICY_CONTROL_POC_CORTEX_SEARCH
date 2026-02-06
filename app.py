@@ -9,7 +9,7 @@ import pandas as pd
 # Page Configuration
 # -------------------------------------------------
 st.set_page_config(
-    page_title="Policy & Control Coretx Search",
+    page_title="Policy & Control Cortex Search",
     layout="wide"
 )
 
@@ -130,37 +130,37 @@ if search_btn:
         #        '{version}'
         #    )
         #"""
-  
+		
 
         try:
             #results_df = session.sql(search_sql).to_pandas()
-   resp = search_service.search(
-    query=search_text,
-    columns=["CHUNK_TEXT", "FILE_NAME", "VERSION", "CHUNK_TYPE", "CHUNK_ORDER"],
-    filter={
-     "@and": [
-      {"@eq": {"LOB": lob}},
-      {"@eq": {"STATE": state}},
-      {"@eq": {"VERSION": version}}
-     ]
-    },
-    limit=top_k
-   )
-   results = resp.to_dict()["results"]   
-   results_df = pd.DataFrame(results)
-   
-   results_df["CITATION"] = (
-    results_df["FILE_NAME"]
-    + " | Version: " + results_df["VERSION"]
-    + " | Chunk: " + results_df["CHUNK_TYPE"].astype(str)
-    + " " + results_df["CHUNK_ORDER"].astype(str)
-   )
-   
-   results_df.rename(
-    columns={"CHUNK_TEXT": "EXCERPT"},
-    inplace=True
-   )
-    
+			resp = search_service.search(
+				query=search_text,
+				columns=["CHUNK_TEXT", "FILE_NAME", "VERSION", "CHUNK_TYPE", "CHUNK_ORDER"],
+				filter={
+					"@and": [
+						{"@eq": {"LOB": lob}},
+						{"@eq": {"STATE": state}},
+						{"@eq": {"VERSION": version}}
+					]
+				},
+				limit=top_k
+			)
+			results = resp.to_dict()["results"]			
+			results_df = pd.DataFrame(results)
+			
+			results_df["CITATION"] = (
+				results_df["FILE_NAME"]
+				+ " | Version: " + results_df["VERSION"]
+				+ " | Chunk: " + results_df["CHUNK_TYPE"].astype(str)
+				+ " " + results_df["CHUNK_ORDER"].astype(str)
+			)
+			
+			results_df.rename(
+				columns={"CHUNK_TEXT": "EXCERPT"},
+				inplace=True
+			)
+				
             if results_df.empty:
                 st.warning("No matching clauses found.")
             else:
