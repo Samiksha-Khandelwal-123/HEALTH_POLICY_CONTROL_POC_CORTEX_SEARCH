@@ -35,16 +35,13 @@ if not st.session_state.authenticated:
     login_btn = st.sidebar.button("Login")
 
     if login_btn:
-        # 🔹 DEMO AUTH (replace with DB / LDAP if needed)
         if username and password:
             st.session_state.authenticated = True
             st.session_state.role = role
             st.session_state.username = username
-            #st.experimental_rerun()
         else:
             st.sidebar.error("Invalid credentials")
 
-    # Stop app execution until login
     st.stop()
 
 # -------------------------------------------------
@@ -56,10 +53,9 @@ st.sidebar.write("👤 User:", st.session_state.username)
 logout_btn = st.sidebar.button("Logout")
 if logout_btn:
     st.session_state.clear()
-    #st.experimental_rerun()
 
 # -------------------------------------------------
-# Snowflake Session (Auto-auth in SiS)
+# Snowflake Session
 # -------------------------------------------------
 session = get_active_session()
 root = Root(session)
@@ -70,6 +66,7 @@ search_service = (
         .schemas["HEALTH_POLICY_POC"]
         .cortex_search_services["HEALTH_POLICY_POC_CORTEX_SEARCH_SERVICE"]
 )
+
 # -------------------------------------------------
 # Header
 # -------------------------------------------------
@@ -122,50 +119,48 @@ if search_btn:
     else:
         st.subheader("📌 Search Results")
 
-        #search_sql = f"""
-        #    CALL AI_POC_DB.HEALTH_POLICY_POC.SEARCH_POLICY_CLAUSE(
-        #        '{search_text}',
-        #        '{state}',
-        #        '{lob}',
-        #        '{version}'
-        #    )
-        #"""
-		
-
         try:
-            #results_df = session.sql(search_sql).to_pandas()
-			resp = search_service.search(
-				query=search_text,
-				columns=["CHUNK_TEXT", "FILE_NAME", "VERSION", "CHUNK_TYPE", "CHUNK_ORDER"],
-				filter={
-					"@and": [
-						{"@eq": {"LOB": lob}},
-						{"@eq": {"STATE": state}},
-						{"@eq": {"VERSION": version}}
-					]
-				},
-				limit=top_k
-			)
-			results = resp.to_dict()["results"]			
-			results_df = pd.DataFrame(results)
-			
-			results_df["CITATION"] = (
-				results_df["FILE_NAME"]
-				+ " | Version: " + results_df["VERSION"]
-				+ " | Chunk: " + results_df["CHUNK_TYPE"].astype(str)
-				+ " " + results_df["CHUNK_ORDER"].astype(str)
-			)
-			
-			results_df.rename(
-				columns={"CHUNK_TEXT": "EXCERPT"},
-				inplace=True
-			)
-				
+            resp = search_service.search(
+                query=search_text,
+                columns=[
+                    "CHUNK_TEXT",
+                    "FILE_NAME",
+                    "VERSION",
+                    "CHUNK_TYPE",
+                    "CHUNK_ORDER"
+                ],
+                filter={
+                    "@and": [
+                        {"@eq": {"LOB": lob}},
+                        {"@eq": {"STATE": state}},
+                        {"@eq": {"VERSION": version}}
+                    ]
+                },
+                limit=top_k
+            )
+
+            results = resp.to_dict()["results"]
+            results_df = pd.DataFrame(results)
+
             if results_df.empty:
                 st.warning("No matching clauses found.")
             else:
+                results_df["CITATION"] = (
+                    results_df["FILE_NAME"]
+                    + " | Version: " + results_df["VERSION"]
+                    + " | Chunk: " + results_df["CHUNK_TYPE"].astype(str)
+                    + " " + results_df["CHUNK_ORDER"].astype(str)
+                )
+
+                results_df.rename(
+                    columns={"CHUNK_TEXT": "EXCERPT"},
+                    inplace=True
+                )
+
                 results_df.columns = (
-                    results_df.columns.str.replace('"', '').str.strip().str.upper()
+                    results_df.columns.str.replace('"', '')
+                    .str.strip()
+                    .str.upper()
                 )
 
                 results_df = results_df.sort_values("SCORE", ascending=False)
@@ -176,13 +171,10 @@ if search_btn:
                 for _, row in results_df.iterrows():
                     with st.container():
 
-                        # ADMIN → Citation + Excerpt
                         if st.session_state.role == "admin":
                             st.markdown(f"### 📄 {row['CITATION']}")
                             st.markdown("**Excerpt:**")
                             st.markdown(row["EXCERPT"])
-
-                        # USER → Excerpt only
                         else:
                             st.markdown("### 📄 Policy Match")
                             st.markdown("**Excerpt:**")
@@ -190,40 +182,40 @@ if search_btn:
 
                         st.divider()
 
-            # -------------------------------------------------
-            # Audit Logging
-            # -------------------------------------------------
-            audit_df = session.create_dataframe(
-                [[
-                    search_text,
-                    lob,
-                    state,
-                    version,
-                    "HEALTH_POLICY_POC_CORTEX_SEARCH_SERVICE",
-                    json.loads(results_df.to_json(orient="records")),
-                    len(results_df),
-                    st.session_state.username,
-                    st.session_state.role,
-                    datetime.now()
-                ]],
-                schema=[
-                    "SEARCH_TEXT",
-                    "LOB",
-                    "STATE",
-                    "VERSION",
-                    "QUERY_TEXT",
-                    "QUERY_OUTPUT",
-                    "RESULT_COUNT",
-                    "USER_NAME",
-                    "ROLE_NAME",
-                    "SEARCH_TS"
-                ]
-            )
+                # -------------------------------------------------
+                # Audit Logging
+                # -------------------------------------------------
+                audit_df = session.create_dataframe(
+                    [[
+                        search_text,
+                        lob,
+                        state,
+                        version,
+                        "HEALTH_POLICY_POC_CORTEX_SEARCH_SERVICE",
+                        json.loads(results_df.to_json(orient="records")),
+                        len(results_df),
+                        st.session_state.username,
+                        st.session_state.role,
+                        datetime.now()
+                    ]],
+                    schema=[
+                        "SEARCH_TEXT",
+                        "LOB",
+                        "STATE",
+                        "VERSION",
+                        "QUERY_TEXT",
+                        "QUERY_OUTPUT",
+                        "RESULT_COUNT",
+                        "USER_NAME",
+                        "ROLE_NAME",
+                        "SEARCH_TS"
+                    ]
+                )
 
-            audit_df.write.save_as_table(
-                "AI_POC_DB.HEALTH_POLICY_POC.POLICY_SEARCH_AUDIT",
-                mode="append"
-            )
+                audit_df.write.save_as_table(
+                    "AI_POC_DB.HEALTH_POLICY_POC.POLICY_SEARCH_AUDIT",
+                    mode="append"
+                )
 
         except Exception as e:
             st.error("❌ Error while executing search")
